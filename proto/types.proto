@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+option go_package = "github.com/ArditZubaku/blockchain/proto";
+
+message Block {
+  Header header = 1;
+  // this how you declare an array
+  repeated Transaction transactions = 2;
+}
+
+message Header {
+  int32 version = 1;
+  // if you have 10 blocks you have a height of 10
+  int32 height = 2;
+  bytes previous_hash = 3;
+  bytes root_hash = 4; // merkle root of transactions
+  int64 timestamp = 5;
+}
+
+message Transaction {}
