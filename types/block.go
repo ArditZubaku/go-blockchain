@@ -20,6 +20,6 @@ func HashBlock(block *proto.Block) []byte {
 	return hash[:]
 }
 
-func SignBlock(pk *crypto.PrivateKey, b *proto.Block) *crypto.Signature {
+func SignBlock(pk crypto.PrivateKey, b *proto.Block) crypto.Signature {
 	return pk.Sign(HashBlock(b))
 }
