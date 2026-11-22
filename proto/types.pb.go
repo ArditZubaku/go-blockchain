@@ -25,6 +25,7 @@ type Version struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Version       string                 `protobuf:"bytes,1,opt,name=version,proto3" json:"version,omitempty"`
 	Height        int32                  `protobuf:"varint,2,opt,name=height,proto3" json:"height,omitempty"`
+	ListenAddr    string                 `protobuf:"bytes,3,opt,name=listen_addr,json=listenAddr,proto3" json:"listen_addr,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -71,6 +72,13 @@ func (x *Version) GetHeight() int32 {
 		return x.Height
 	}
 	return 0
+}
+
+func (x *Version) GetListenAddr() string {
+	if x != nil {
+		return x.ListenAddr
+	}
+	return ""
 }
 
 type Ack struct {
@@ -427,10 +435,12 @@ var File_proto_types_proto protoreflect.FileDescriptor
 
 const file_proto_types_proto_rawDesc = "" +
 	"\n" +
-	"\x11proto/types.proto\";\n" +
+	"\x11proto/types.proto\"\\\n" +
 	"\aVersion\x12\x18\n" +
 	"\aversion\x18\x01 \x01(\tR\aversion\x12\x16\n" +
-	"\x06height\x18\x02 \x01(\x05R\x06height\"\x05\n" +
+	"\x06height\x18\x02 \x01(\x05R\x06height\x12\x1f\n" +
+	"\vlisten_addr\x18\x03 \x01(\tR\n" +
+	"listenAddr\"\x05\n" +
 	"\x03Ack\"Z\n" +
 	"\x05Block\x12\x1f\n" +
 	"\x06header\x18\x01 \x01(\v2\a.HeaderR\x06header\x120\n" +

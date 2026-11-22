@@ -3,35 +3,53 @@ package main
 import (
 	"context"
 	"log"
-	"net"
-	"time"
 
 	"github.com/ArditZubaku/blockchain/node"
 	"github.com/ArditZubaku/blockchain/proto"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
 func main() {
-	ln, err := net.Listen("tcp", ":3000")
+	// logger, err := zap.NewProduction()
+	loggerCfg := zap.NewDevelopmentConfig()
+	loggerCfg.EncoderConfig.TimeKey = ""
+	logger, err := loggerCfg.Build()
 	if err != nil {
-		log.Fatalf("Failed to listen: %+v", err)
+		log.Fatal(err)
 	}
 
-	opts := []grpc.ServerOption{}
-	grpcServer := grpc.NewServer(opts...)
-	node := node.NewNode()
-
-	proto.RegisterNodeServer(grpcServer, node)
-
-	go func() {
-		for {
-			time.Sleep(time.Second * 2)
-			makeTransaction()
-		}
+	// Replaces Zap's default no-op global logger
+	undo := zap.ReplaceGlobals(logger)
+	defer undo()
+	defer func() {
+		_ = zap.L().Sync()
 	}()
 
-	grpcServer.Serve(ln)
+	zap.S().Info("The logger is ready")
+
+	makeNode(":3000")
+	makeNode(":4000", ":3000")
+
+	// go func() {
+	// for {
+	// time.Sleep(time.Second * 2)
+	// makeTransaction()
+	// }
+	// }()
+	select {}
+}
+
+func makeNode(listenAddr string, boostrapNodes ...string) *node.Node {
+	n := node.NewNode(listenAddr)
+	go n.Start()
+
+	if err := n.BootstrapNetwork(boostrapNodes); err != nil {
+		log.Fatalf("Failed to boostrap the network: %+v", err)
+	}
+
+	return n
 }
 
 func makeTransaction() {
@@ -43,7 +61,11 @@ func makeTransaction() {
 
 	nodeClient := proto.NewNodeClient(client)
 
-	v := &proto.Version{Version: "0.1", Height: 1}
+	v := &proto.Version{
+		Version:    "0.1",
+		Height:     1,
+		ListenAddr: ":4000",
+	}
 
 	// _, err = nodeClient.HandleTransaction(context.TODO(), &proto.Transaction{})
 	_, err = nodeClient.Handshake(context.TODO(), v)
