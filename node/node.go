@@ -3,6 +3,7 @@ package node
 import (
 	"context"
 	"net"
+	"slices"
 	"sync"
 
 	"github.com/ArditZubaku/blockchain/proto"
@@ -32,7 +33,7 @@ func NewNode(listenAddr string) *Node {
 	}
 }
 
-func (n *Node) Start() error {
+func (n *Node) Start(bootstrapNodes []string) error {
 	ln, err := net.Listen("tcp", n.listenAddr)
 	if err != nil {
 		return err
@@ -42,7 +43,13 @@ func (n *Node) Start() error {
 	grpcServer := grpc.NewServer(opts...)
 	proto.RegisterNodeServer(grpcServer, n)
 
-	zap.S().Infow("Node running on ->", "addr:", n.listenAddr)
+	zap.S().Infow("Node running on", "addr:", n.listenAddr)
+
+	go func() {
+		if err := n.bootstrapNetwork(bootstrapNodes); err != nil {
+			zap.S().Fatalf("Failed to boostrap the network: %+v", err)
+		}
+	}()
 
 	return grpcServer.Serve(ln)
 }
@@ -63,32 +70,56 @@ func (n *Node) Handshake(ctx context.Context, v *proto.Version) (*proto.Version,
 	return n.getVersion(), nil
 }
 
-func (n *Node) BootstrapNetwork(addrs []string) error {
+func (n *Node) bootstrapNetwork(addrs []string) error {
 	for _, addr := range addrs {
-		c, err := makeNodeClient(addr)
-		if err != nil {
-			return err
-		}
-
-		v, err := c.Handshake(context.Background(), n.getVersion())
-		if err != nil {
-			zap.S().Errorf("Failed to handshake: %+v\n", err)
+		if !n.canConnectWith(addr) {
 			continue
 		}
 
+		zap.S().Debugw(
+			"Dialing peer",
+			"addr", n.listenAddr,
+			"peer_addr", addr,
+		)
+		c, v, err := n.dialPeer(addr)
+		if err != nil {
+			return err
+		}
 		n.addPeer(c, v)
 	}
 
 	return nil
 }
 
+func (n *Node) dialPeer(addr string) (proto.NodeClient, *proto.Version, error) {
+	c, err := makeNodeClient(addr)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	v, err := c.Handshake(context.Background(), n.getVersion())
+	if err != nil {
+		zap.S().Errorf("Failed to handshake: %+v\n", err)
+		return nil, nil, err
+	}
+
+	return c, v, nil
+}
+
 func (n *Node) addPeer(c proto.NodeClient, v *proto.Version) {
 	n.peerLock.Lock()
 	defer n.peerLock.Unlock()
 
-	zap.S().Debugw("New peer connected", "addr", n.listenAddr, "peer_addr", v.GetListenAddr(), "height", v.GetHeight())
-
 	n.peers[c] = v
+
+	go n.bootstrapNetwork(v.PeerList)
+
+	zap.S().Debugw(
+		"New peer successfully connected",
+		"addr", n.listenAddr,
+		"peer_addr", v.GetListenAddr(),
+		"height", v.GetHeight(),
+	)
 }
 
 func (n *Node) rmPeer(c proto.NodeClient) {
@@ -103,7 +134,27 @@ func (n *Node) getVersion() *proto.Version {
 		Version:    "0.1",
 		Height:     0,
 		ListenAddr: n.listenAddr,
+		PeerList:   n.getPeerList(),
 	}
+}
+
+func (n *Node) getPeerList() []string {
+	n.peerLock.RLock()
+	defer n.peerLock.RUnlock()
+
+	peers := make([]string, 0, len(n.peers))
+	for _, v := range n.peers {
+		peers = append(peers, v.ListenAddr)
+	}
+
+	return peers
+}
+
+func (n *Node) canConnectWith(addr string) bool {
+	if n.listenAddr == addr {
+		return false
+	}
+	return !slices.Contains(n.getPeerList(), addr)
 }
 
 func makeNodeClient(listenAddr string) (proto.NodeClient, error) {

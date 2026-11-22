@@ -3,22 +3,32 @@ package main
 import (
 	"context"
 	"log"
+	"os"
+	"time"
 
 	"github.com/ArditZubaku/blockchain/node"
 	"github.com/ArditZubaku/blockchain/proto"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
 func main() {
 	// logger, err := zap.NewProduction()
-	loggerCfg := zap.NewDevelopmentConfig()
-	loggerCfg.EncoderConfig.TimeKey = ""
-	logger, err := loggerCfg.Build()
-	if err != nil {
-		log.Fatal(err)
-	}
+	encCfg := zap.NewDevelopmentEncoderConfig()
+	encCfg.EncodeLevel = zapcore.CapitalColorLevelEncoder
+	encCfg.EncodeTime = zapcore.TimeEncoderOfLayout("15:04:05.000")
+	encCfg.EncodeCaller = zapcore.ShortCallerEncoder
+	encCfg.TimeKey = ""
+
+	core := zapcore.NewCore(
+		zapcore.NewConsoleEncoder(encCfg),
+		zapcore.AddSync(os.Stdout),
+		zap.DebugLevel,
+	)
+
+	logger := zap.New(core, zap.AddCaller())
 
 	// Replaces Zap's default no-op global logger
 	undo := zap.ReplaceGlobals(logger)
@@ -27,10 +37,13 @@ func main() {
 		_ = zap.L().Sync()
 	}()
 
-	zap.S().Info("The logger is ready")
+	zap.S().Infow("The logger is ready")
 
 	makeNode(":3000")
+	time.Sleep(time.Second)
 	makeNode(":4000", ":3000")
+	time.Sleep(time.Second)
+	makeNode(":5000", ":4000")
 
 	// go func() {
 	// for {
@@ -41,14 +54,9 @@ func main() {
 	select {}
 }
 
-func makeNode(listenAddr string, boostrapNodes ...string) *node.Node {
+func makeNode(listenAddr string, bootstrapNodes ...string) *node.Node {
 	n := node.NewNode(listenAddr)
-	go n.Start()
-
-	if err := n.BootstrapNetwork(boostrapNodes); err != nil {
-		log.Fatalf("Failed to boostrap the network: %+v", err)
-	}
-
+	go n.Start(bootstrapNodes)
 	return n
 }
 
